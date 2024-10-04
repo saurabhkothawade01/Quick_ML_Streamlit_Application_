@@ -25,6 +25,7 @@ import io
 import plotly.graph_objects as go
 import time
 import logging
+from io import BytesIO
 
 # Configures the settings of the page
 st.set_page_config(
@@ -1626,6 +1627,27 @@ def saved_model(X_train, y_train, model_name, is_classification):
     except Exception as e:
         st.error(f"Error occurred while saving the model {model_name}: {e}")
         logging.error(f"Error occurred while saving the model {model_name}: {e}")
+
+def make_predictions(model, test_data):
+    if model in None:
+        st.error("No model provided")
+        return None
+    try:
+        predictions = model.predict(test_data)
+        return predictions
+    except Exception as e:
+        st.error(str(e))
+        return None
+    
+def load_real_pred_to_csv(y_test, predictions):
+    try:
+        df = pd.DataFrame({
+            'True Values': y_test,
+            'Predictions': predictions
+        })
+        return df
+    except Exception as e:
+        st.error(str(e))
 
 # Main function to drive the Streamlit machine learning application
 def main():    

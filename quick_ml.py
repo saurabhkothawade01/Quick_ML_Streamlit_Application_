@@ -26,6 +26,8 @@ import time
 import logging
 import os
 import create_db
+import sqlite3
+from io import BytesIO
 
 # Configures the settings of the page
 st.set_page_config(
@@ -1449,6 +1451,26 @@ def display_regression_results(results):
         logging.error(f"An error occurred while displaying regression results: {e}")
         st.error(f"Error displaying regression results: {e}")
 
+# Function to save model to the database
+def save_model_to_db(model, model_name, dataset_id):
+    # Serialize the model using joblib
+    model_binary = BytesIO()
+    joblib.dump(model, model_binary)
+    model_binary.seek(0)  # Move the cursor to the beginning of the stream
+
+    # Connect to your SQLite database (or modify this for your database setup)
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+
+    # Insert the model into the table
+    cursor.execute('''
+        INSERT INTO models (dataset_id, model_name, ml_model)
+        VALUES (?, ?, ?)
+    ''', (dataset_id, model_name, model_binary.read()))
+
+    conn.commit()
+    conn.close()
+
 # saved model by choosing model name from select box
 def saved_model(X_train, y_train, model_name, is_classification):
     models = {
@@ -1470,15 +1492,40 @@ def saved_model(X_train, y_train, model_name, is_classification):
         logging.error(f"Model {model_name} is not available.")
         raise ValueError(f"Model {model_name} is not in the available models.")
 
-    try:
+    try:    
         model = models[model_name]
         model.fit(X_train, y_train)
         st.success(f"Model {model_name} saved successfully!")
         logging.info(f"Model {model_name} trained and saved successfully.")
 
+        save_model_to_db(model, model_name, dataset_id)
+
+        return model
+
     except Exception as e:
         st.error(f"Error occurred while saving the model {model_name}: {e}")
         logging.error(f"Error occurred while saving the model {model_name}: {e}")
+
+def make_predictions(model, test_data):
+    if model is None:
+        st.error("No model provided")
+        return None
+    try:
+        predictions = model.predict(test_data)
+        return predictions
+    except Exception as e:
+        st.error(str(e))
+        return None
+    
+def load_real_pred_to_csv(y_test, predictions):
+    try:
+        df = pd.DataFrame({
+            'True Values': y_test,
+            'Predictions': predictions
+        })
+        return df
+    except Exception as e:
+        st.error(str(e))
 
 # Main function to drive the Streamlit machine learning application
 def main(user_id):    
@@ -1501,6 +1548,8 @@ def main(user_id):
 
     if 'analysis_done' not in st.session_state:
         st.session_state.analysis_done = False
+    if 'model_saved' not in st.session_state:
+        st.session_state.model_saved = False
 
     uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
 
@@ -1513,7 +1562,8 @@ def main(user_id):
 
                 dataset_name = uploaded_file.name
 
-                add_dataset_to_db(user_id, dataset_name, file_path)
+                global dataset_id
+                dataset_id = add_dataset_to_db(user_id, dataset_name, file_path)
 
                 st.success(f"Dataset '{dataset_name}' uploaded and saved successfully.")
 
@@ -1538,6 +1588,7 @@ def main(user_id):
                                 global df_cleaned_download
                                 df_cleaned, more_missing, columns_by_type = handle_missing_values(df, columns_by_type, normal_col, not_normal_col, removed_info)
                                 df_cleaned_download = df_cleaned.copy()
+                                st.session_state.df_cleaned = df_cleaned.copy() 
 
                                 df_trans, columns_by_type, not_normal_col = find_ids_col(df_cleaned, columns_by_type, not_normal_col)
                                 df_trans, columns_by_type = operations_on_data(df_trans, columns_by_type, percentage_duplicates, irrelevant_columns, more_missing, action_duplicate, action_irrelevant, action_missing)
@@ -1569,9 +1620,77 @@ def main(user_id):
                                     results = compare_regression_models(X_train, y_train)
                                     display_regression_results(results)
 
+                                st.session_state.results = results
+                                st.session_state.X_train = X_train
+                                st.session_state.y_train = y_train
+                                st.session_state.X_test = X_test
+                                st.session_state.y_test = y_test
+                                st.session_state.problem_type = problem_type
+                                st.session_state.df_final = df_final
+                                st.session_state.analysis_done = True      
+
                     except Exception as e:
                         st.error(f"An error occurred during data analysis and transformation: {str(e)}")
                         logging.error(f"An error occurred during data analysis and transformation: {e}")
+
+                if st.session_state.analysis_done:
+                    st.success("Analysis completed!")
+                    
+                    
+                    model_names = list(st.session_state.results.keys())
+                    selected_model_name = st.selectbox("Select a model to save", model_names)
+                    
+                    if st.button('Save Model'):
+                        with st.spinner("Saving model..."):
+                            try:
+                                model = saved_model(st.session_state.X_train, st.session_state.y_train, selected_model_name, st.session_state.problem_type)
+                                st.session_state.model = model
+                                print(model)
+                                predictions = make_predictions(model, st.session_state.X_test)
+                                df_pred = load_real_pred_to_csv(st.session_state.y_test, predictions)
+                                st.session_state.df_pred = df_pred
+                                st.session_state.model_saved = True
+                            except Exception as e:
+                                st.error(f"An error occurred while saving the model: {str(e)}")
+                                logging.error(f"An error occurred while saving the model: {e}")
+
+                    if 'model_saved' in st.session_state and st.session_state.model_saved:
+                        st.success("Model saved successfully!")
+                        st.subheader("Download Options")
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                                if 'df_cleaned' in st.session_state:
+                                    if st.download_button(
+                                        label="Download Cleaned Data",
+                                        data=st.session_state.df_cleaned.to_csv(index=False).encode('utf-8'),
+                                        file_name="data_cleaned.csv",
+                                        mime="text/csv"
+                                    ):
+                                        st.success("Cleaned data file is ready for download!")
+                                
+                        with col2:
+                            if 'df_pred' in st.session_state:
+                                if st.download_button(
+                                    label="Download Prediction Data",
+                                    data=st.session_state.df_pred.to_csv(index=False).encode('utf-8'),
+                                    file_name="predictions.csv",
+                                    mime="text/csv"
+                                ):
+                                    st.success("Prediction data file is ready for download!")
+
+                        with col3:
+                            if 'model' in st.session_state:
+                                buffer = io.BytesIO()
+                                joblib.dump(st.session_state.model, buffer)
+                                buffer.seek(0)
+                                if st.download_button(
+                                    label="Download ML Model",
+                                    data=buffer,
+                                    file_name=f"{selected_model_name}.pkl",
+                                    mime="application/octet-stream"
+                                ):
+                                    st.success("ML model file is ready for download!")        
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
             logging.error(f"An error occurred: {e}")
@@ -1593,6 +1712,9 @@ def add_dataset_to_db(user_id, dataset_name, dataset_file):
         VALUES (?, ?, ?)
     ''', (user_id, dataset_name, dataset_file))
     create_db.conn.commit()
+
+    dataset_id = create_db.c.lastrowid
+    return dataset_id
 
 # Load data from a CSV file with multiple encoding attempts.
 def load_data(file):

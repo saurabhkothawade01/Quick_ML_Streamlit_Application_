@@ -12,8 +12,6 @@ def main():
         st.session_state.user_id = None
     if 'username' not in st.session_state:
         st.session_state.username = None
-    if 'cleaned_data' not in st.session_state:
-        st.session_state.cleaned_data = None
 
     if not st.session_state.logged_in:
         menu = ["Login", "Register"]
@@ -50,28 +48,10 @@ def main():
 
     else:
         st.sidebar.success(f"Logged in as {st.session_state.username}")
-        
-        if st.sidebar.button("Download cleaned data"):
-            cleaned_data = get_cleaned_data()
-            if cleaned_data is not None:
-                try:
-                    st.sidebar.download_button(
-                        label="Download CSV",
-                        data=cleaned_data.to_csv(index=False).encode('utf-8'),
-                        file_name="cleaned_data.csv",
-                        mime="text/csv"
-                    )
-                    st.sidebar.success("Download ready. Click the 'Download CSV' button to save the file.")
-                except Exception as e:
-                    st.sidebar.error(f"Error preparing download: {e}")
-            else:
-                st.sidebar.warning("No cleaned data available. Please analyze data first.")
-
         if st.sidebar.button("Logout"):
             st.session_state.logged_in = False
             st.session_state.user_id = None
             st.session_state.username = None
-            st.session_state.cleaned_data = None
             st.rerun()
         else:
             quick_ml.main(st.session_state.user_id)

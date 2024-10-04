@@ -26,6 +26,18 @@ def create_datasets_table():
     ''')
     conn.commit()
 
+def create_models_table():
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS models (
+        model_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dataset_id INTEGER,
+        model_name TEXT,
+        ml_model BLOB,
+        FOREIGN KEY (dataset_id) REFERENCES datasets(dataset_id)
+        )
+    ''')
+    conn.commit()
+    
 def hash_password(password):
     return sha256(password.encode()).hexdigest()
 
@@ -47,3 +59,4 @@ def login_user(username, password):
 
 create_users_table()
 create_datasets_table()
+create_models_table()
