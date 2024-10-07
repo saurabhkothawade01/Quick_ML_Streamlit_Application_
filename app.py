@@ -2,6 +2,21 @@ import streamlit as st
 from create_db import register_user, login_user
 import quick_ml
 from quick_ml import get_cleaned_data
+import re
+
+def validate_username(username):
+    if len(username) < 5 or not username.isalnum():
+        return False
+    return True
+
+def validate_password(password):
+    if (len(password) < 8 or 
+        not re.search(r"[A-Z]", password) or
+        not re.search(r"[a-z]", password) or
+        not re.search(r"\d", password) or
+        not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password)):
+        return False
+    return True
 
 def main():
     st.title("Quick ML")
@@ -41,10 +56,15 @@ def main():
             new_password = st.text_input("Password", type="password")
 
             if st.button("Register"):
-                if register_user(new_user, new_password):
-                    st.success("Account created successfully. Please login.")
+                if not validate_username(new_user):
+                    st.error("Username must be at least 5 characters long and contain only alphanumeric characters.")
+                elif not validate_password(new_password):
+                    st.error("Password must be at least 8 characters long, include an uppercase letter, lowercase letter, digit, and special character.")
                 else:
-                    st.error("Username already exists. Try a different one.")
+                    if register_user(new_user, new_password):
+                        st.success("Account created successfully. Please login.")
+                    else:
+                        st.error("Username already exists. Try a different one.")
 
     else:
         st.sidebar.success(f"Logged in as {st.session_state.username}")
