@@ -1456,13 +1456,11 @@ def save_model_to_db(model, model_name, dataset_id):
     # Serialize the model using joblib
     model_binary = BytesIO()
     joblib.dump(model, model_binary)
-    model_binary.seek(0)  # Move the cursor to the beginning of the stream
+    model_binary.seek(0)  
 
-    # Connect to your SQLite database (or modify this for your database setup)
     conn = sqlite3.connect('users.db')
     cursor = conn.cursor()
 
-    # Insert the model into the table
     cursor.execute('''
         INSERT INTO models (dataset_id, model_name, ml_model)
         VALUES (?, ?, ?)
